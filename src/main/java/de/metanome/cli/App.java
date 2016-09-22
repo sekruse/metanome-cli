@@ -213,7 +213,7 @@ public class App {
      */
     public static class Parameters {
 
-        @Parameter(names = {"--algorithm-config"}, description = "algorithm configuration parameters (<name>:<value>)", required = true)
+        @Parameter(names = {"--algorithm-config"}, description = "algorithm configuration parameters (<name>:<value>)")
         public List<String> algorithmConfigurationValues = new ArrayList<>();
 
         @Parameter(names = {"-a", "--algorithm"}, description = "name of the Metanome algorithm class", required = true)
