@@ -7,6 +7,7 @@ import de.metanome.algorithm_integration.Algorithm;
 import de.metanome.algorithm_integration.AlgorithmConfigurationException;
 import de.metanome.algorithm_integration.algorithm_types.*;
 import de.metanome.algorithm_integration.configuration.ConfigurationSettingFileInput;
+import de.metanome.algorithm_integration.input.FileInputGenerator;
 import de.metanome.algorithm_integration.input.RelationalInputGenerator;
 import de.metanome.algorithm_integration.results.Result;
 import de.metanome.backend.input.file.DefaultFileInputGenerator;
@@ -156,30 +157,48 @@ public class App {
     }
 
     private static void loadFileInputGenerators(Parameters parameters, Algorithm algorithm) throws AlgorithmConfigurationException {
-        if (!(algorithm instanceof RelationalInputParameterAlgorithm)) {
-            System.err.printf("Algorithm does not implement %s.\n", RelationalInputParameterAlgorithm.class);
+        if (algorithm instanceof RelationalInputParameterAlgorithm) {
+            RelationalInputGenerator[] inputGenerators = new RelationalInputGenerator[parameters.inputDatasets.size()];
+            for (int i = 0; i < inputGenerators.length; i++) {
+                inputGenerators[i] = createInputGenerator(parameters, i);
+            }
+            ((RelationalInputParameterAlgorithm) algorithm).setRelationalInputConfigurationValue(parameters.inputDatasetKey, inputGenerators);
+
+        } else if (algorithm instanceof FileInputParameterAlgorithm) {
+            FileInputGenerator[] inputGenerators = new FileInputGenerator[parameters.inputDatasets.size()];
+            for (int i = 0; i < inputGenerators.length; i++) {
+                inputGenerators[i] = createInputGenerator(parameters, i);
+            }
+            ((FileInputParameterAlgorithm) algorithm).setFileInputConfigurationValue(parameters.inputDatasetKey, inputGenerators);
+
+        } else {
+            System.err.printf("Algorithm does not implement a supported input method (relational/files).\n");
             System.exit(5);
             return;
         }
+    }
 
-        RelationalInputGenerator[] inputGenerators = new RelationalInputGenerator[parameters.inputDatasets.size()];
-        for (int i = 0; i < inputGenerators.length; i++) {
-            inputGenerators[i] = new DefaultFileInputGenerator(new ConfigurationSettingFileInput(
-                    parameters.inputDatasets.get(i),
-                    true,
-                    toChar(parameters.inputFileSeparator),
-                    toChar(parameters.inputFileQuotechar),
-                    toChar(parameters.inputFileEscape),
-                    parameters.inputFileStrictQuotes,
-                    parameters.inputFileIgnoreLeadingWhiteSpace,
-                    parameters.inputFileSkipLines,
-                    parameters.inputFileHasHeader,
-                    parameters.inputFileSkipDifferingLines,
-                    parameters.inputFileNullString
-            ));
-
-        }
-        ((RelationalInputParameterAlgorithm) algorithm).setRelationalInputConfigurationValue(parameters.inputDatasetKey, inputGenerators);
+    /**
+     * Create a new {@link DefaultFileInputGenerator}.
+     * @param parameters defines how to configure the {@link DefaultFileInputGenerator}
+     * @param datasetIndex index of the dataset to create the {@link DefaultFileInputGenerator} for
+     * @return the {@link DefaultFileInputGenerator}
+     * @throws AlgorithmConfigurationException
+     */
+    private static DefaultFileInputGenerator createInputGenerator(Parameters parameters, int datasetIndex) throws AlgorithmConfigurationException {
+        return new DefaultFileInputGenerator(new ConfigurationSettingFileInput(
+                parameters.inputDatasets.get(datasetIndex),
+                true,
+                toChar(parameters.inputFileSeparator),
+                toChar(parameters.inputFileQuotechar),
+                toChar(parameters.inputFileEscape),
+                parameters.inputFileStrictQuotes,
+                parameters.inputFileIgnoreLeadingWhiteSpace,
+                parameters.inputFileSkipLines,
+                parameters.inputFileHasHeader,
+                parameters.inputFileSkipDifferingLines,
+                parameters.inputFileNullString
+        ));
     }
 
     private static char toChar(String string) {
