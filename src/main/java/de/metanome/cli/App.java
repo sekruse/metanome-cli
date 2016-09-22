@@ -14,7 +14,10 @@ import de.metanome.backend.input.file.DefaultFileInputGenerator;
 import de.metanome.backend.result_receiver.ResultCache;
 
 import java.io.FileNotFoundException;
+import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Calendar;
+import java.util.GregorianCalendar;
 import java.util.List;
 
 /**
@@ -58,15 +61,47 @@ public class App {
             System.out.printf("Elapsed time: %s.\n", formatDuration(endTimeMillis - startTimeMillis));
         }
 
-        System.out.println("Results:");
-        for (Result result : resultCache.fetchNewResults()) {
-            System.out.println(result);
+        // Handle "file:exec-id" formats properly.
+        switch (parameters.output.split(":")[0]) {
+            case "print":
+                System.out.println("Results:");
+                for (Result result : resultCache.fetchNewResults()) {
+                    System.out.println(result);
+                }
+                break;
+            default:
+                System.out.printf("Unknown output mode \"%s\". Defaulting to \"file\"\n", parameters.output);
+            case "file":
+                try {
+                    resultCache.close();
+                } catch (IOException e) {
+                    System.err.println("Storing the result failed.");
+                    e.printStackTrace();
+                    System.exit(4);
+                }
+                break;
+            case "none":
+                break;
         }
     }
 
     private static ResultCache createResultReceiver(Parameters parameters) {
+        String executionId;
+        if (parameters.output.startsWith("file:")) {
+            executionId = parameters.output.substring("file:".length());
+        } else {
+            Calendar calendar = GregorianCalendar.getInstance();
+            executionId = String.format("%04d-%02d-%02d_%02d-%02d-%02d",
+                    calendar.get(Calendar.YEAR),
+                    calendar.get(Calendar.MONTH) + 1,
+                    calendar.get(Calendar.DATE),
+                    calendar.get(Calendar.HOUR_OF_DAY),
+                    calendar.get(Calendar.MINUTE),
+                    calendar.get(Calendar.SECOND)
+            );
+        }
         try {
-            return new ResultCache("Metanome CLI cache", null);
+            return new ResultCache(executionId, null);
         } catch (FileNotFoundException e) {
             throw new RuntimeException("Unexpected exception.", e);
         }
@@ -270,6 +305,9 @@ public class App {
 
         @Parameter(names = "--null", description = "representation of NULLs")
         public String inputFileNullString = "";
+
+        @Parameter(names = {"-o", "--output"}, description = "how to output results (none/print/file[:run-ID])")
+        public String output = "file";
 
     }
 }
