@@ -241,7 +241,7 @@ public class App {
         @Parameter(names = "--file-key", description = "configuration key for the input files", required = true)
         public String inputDatasetKey;
 
-        @Parameter(names = "--files", description = "input file to be analyzed", required = true)
+        @Parameter(names = "--files", description = "input file to be analyzed", required = true, variableArity = true)
         public List<String> inputDatasets = new ArrayList<>();
 
         @Parameter(names = "--separator", description = "separates fields in the input file")
