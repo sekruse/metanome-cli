@@ -273,7 +273,23 @@ public class App {
     }
 
     private static char toChar(String string) {
-        return string == null || string.isEmpty() ? '\0' : string.charAt(0);
+        if (string == null || string.isEmpty()) return '\0';
+        else if (string.length() == 1) return string.charAt(0);
+        switch (string) {
+            case "\\t":
+            case "tab":
+                return '\t';
+            case "' '":
+            case "\" \"":
+            case "space":
+                return ' ';
+            case "semicolon":
+                return ';';
+            case "comma":
+                return ',';
+            default:
+                throw new IllegalArgumentException(String.format("Illegal character specification: %s", string));
+        }
     }
 
     public static void configureResultReceiver(Algorithm algorithm, ResultCache resultReceiver) {
