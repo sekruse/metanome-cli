@@ -15,10 +15,11 @@ import de.metanome.backend.result_receiver.ResultCache;
 
 import java.io.FileNotFoundException;
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Calendar;
-import java.util.GregorianCalendar;
-import java.util.List;
+import java.io.UncheckedIOException;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.util.*;
+import java.util.stream.Collectors;
 
 /**
  * App to run Metanome algorithms from the command line.
@@ -127,20 +128,19 @@ public class App {
      * @return the configured {@link Algorithm} instance
      */
     private static Algorithm configureAlgorithm(Parameters parameters, ResultCache resultCache) {
-        final Algorithm algorithm;
         try {
-            algorithm = createAlgorithm(parameters.algorithmClassName);
+            final Algorithm algorithm = createAlgorithm(parameters.algorithmClassName);
             loadMiscConfigurations(parameters, algorithm);
             loadFileInputGenerators(parameters, algorithm);
             configureResultReceiver(algorithm, resultCache);
+            return algorithm;
+
         } catch (Exception e) {
             System.err.println("Could not initialize algorithm.");
             e.printStackTrace();
             System.exit(3);
             return null;
         }
-
-        return algorithm;
     }
 
     private static Algorithm createAlgorithm(String algorithmClassName) throws ClassNotFoundException, IllegalAccessException, InstantiationException {
@@ -193,18 +193,24 @@ public class App {
 
     private static void loadFileInputGenerators(Parameters parameters, Algorithm algorithm) throws AlgorithmConfigurationException {
         if (algorithm instanceof RelationalInputParameterAlgorithm) {
-            RelationalInputGenerator[] inputGenerators = new RelationalInputGenerator[parameters.inputDatasets.size()];
-            for (int i = 0; i < inputGenerators.length; i++) {
-                inputGenerators[i] = createInputGenerator(parameters, i);
+            List<RelationalInputGenerator> inputGenerators = new LinkedList<>();
+            for (int i = 0; i < parameters.inputDatasets.size(); i++) {
+                inputGenerators.addAll(createInputGenerators(parameters, i));
             }
-            ((RelationalInputParameterAlgorithm) algorithm).setRelationalInputConfigurationValue(parameters.inputDatasetKey, inputGenerators);
+            ((RelationalInputParameterAlgorithm) algorithm).setRelationalInputConfigurationValue(
+                    parameters.inputDatasetKey,
+                    inputGenerators.toArray(new RelationalInputGenerator[inputGenerators.size()])
+            );
 
         } else if (algorithm instanceof FileInputParameterAlgorithm) {
-            FileInputGenerator[] inputGenerators = new FileInputGenerator[parameters.inputDatasets.size()];
-            for (int i = 0; i < inputGenerators.length; i++) {
-                inputGenerators[i] = createInputGenerator(parameters, i);
+            List<FileInputGenerator> inputGenerators = new LinkedList<>();
+            for (int i = 0; i < parameters.inputDatasets.size(); i++) {
+                inputGenerators.addAll(createInputGenerators(parameters, i));
             }
-            ((FileInputParameterAlgorithm) algorithm).setFileInputConfigurationValue(parameters.inputDatasetKey, inputGenerators);
+            ((FileInputParameterAlgorithm) algorithm).setFileInputConfigurationValue(
+                    parameters.inputDatasetKey,
+                    inputGenerators.toArray(new FileInputGenerator[inputGenerators.size()])
+            );
 
         } else {
             System.err.printf("Algorithm does not implement a supported input method (relational/files).\n");
@@ -215,14 +221,44 @@ public class App {
 
     /**
      * Create a new {@link DefaultFileInputGenerator}.
-     * @param parameters defines how to configure the {@link DefaultFileInputGenerator}
-     * @param datasetIndex index of the dataset to create the {@link DefaultFileInputGenerator} for
-     * @return the {@link DefaultFileInputGenerator}
+     *
+     * @param parameters     defines how to configure the {@link DefaultFileInputGenerator}
+     * @param parameterIndex index of the dataset parameter to create the {@link DefaultFileInputGenerator}s for
+     * @return the {@link DefaultFileInputGenerator}s
      * @throws AlgorithmConfigurationException
      */
-    private static DefaultFileInputGenerator createInputGenerator(Parameters parameters, int datasetIndex) throws AlgorithmConfigurationException {
+    private static Collection<DefaultFileInputGenerator> createInputGenerators(Parameters parameters, int parameterIndex) throws AlgorithmConfigurationException {
+        final String parameter = parameters.inputDatasets.get(parameterIndex);
+        if (parameter.startsWith("load:")) {
+            try {
+                return Files.lines(Paths.get(parameter.substring("load:".length())))
+                        .map(path -> {
+                            try {
+                                return createInputGenerator(parameters, path);
+                            } catch (AlgorithmConfigurationException e) {
+                                throw new RuntimeException("Could not create input generator.", e);
+                            }
+                        })
+                        .collect(Collectors.toList());
+            } catch (IOException e) {
+                throw new UncheckedIOException("Could not load input specification file.", e);
+            } catch (RuntimeException e) {
+                if (e.getCause() != null && (e.getCause() instanceof AlgorithmConfigurationException)) {
+                    throw (AlgorithmConfigurationException) e.getCause();
+                } else {
+                    throw e;
+                }
+            }
+        } else {
+            return Collections.singleton(
+                    createInputGenerator(parameters, parameter)
+            );
+        }
+    }
+
+    private static DefaultFileInputGenerator createInputGenerator(Parameters parameters, String path) throws AlgorithmConfigurationException {
         return new DefaultFileInputGenerator(new ConfigurationSettingFileInput(
-                parameters.inputDatasets.get(datasetIndex),
+                path,
                 true,
                 toChar(parameters.inputFileSeparator),
                 toChar(parameters.inputFileQuotechar),
@@ -276,7 +312,7 @@ public class App {
         @Parameter(names = "--file-key", description = "configuration key for the input files", required = true)
         public String inputDatasetKey;
 
-        @Parameter(names = "--files", description = "input file to be analyzed", required = true, variableArity = true)
+        @Parameter(names = "--files", description = "input file to be analyzed and/or files list input files (prefixed with 'load:')", required = true, variableArity = true)
         public List<String> inputDatasets = new ArrayList<>();
 
         @Parameter(names = "--separator", description = "separates fields in the input file")
