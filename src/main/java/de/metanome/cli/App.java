@@ -150,9 +150,9 @@ public class App {
 
     private static void loadMiscConfigurations(Parameters parameters, Algorithm algorithm) throws AlgorithmConfigurationException {
         for (String algorithmConfigurationValue : parameters.algorithmConfigurationValues) {
-            final String[] keyValuePair = algorithmConfigurationValue.split(":");
-            final String key = keyValuePair[0];
-            final String value = keyValuePair[1];
+            int colonPos = algorithmConfigurationValue.indexOf(':');
+            final String key = algorithmConfigurationValue.substring(0, colonPos);
+            final String value = algorithmConfigurationValue.substring(colonPos + 1);
 
             Boolean booleanValue = tryToParseBoolean(value);
             if (algorithm instanceof BooleanParameterAlgorithm && booleanValue != null) {
