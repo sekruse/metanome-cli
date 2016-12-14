@@ -287,6 +287,9 @@ public class App {
                 return ';';
             case "comma":
                 return ',';
+            case "|":
+            case "pipe":
+                return '|';
             default:
                 throw new IllegalArgumentException(String.format("Illegal character specification: %s", string));
         }
