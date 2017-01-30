@@ -12,6 +12,7 @@ import de.metanome.algorithm_integration.input.RelationalInputGenerator;
 import de.metanome.algorithm_integration.results.Result;
 import de.metanome.backend.input.file.DefaultFileInputGenerator;
 import de.metanome.backend.result_receiver.ResultCache;
+import de.metanome.backend.result_receiver.ResultReceiver;
 
 import java.io.FileNotFoundException;
 import java.io.IOException;
@@ -48,8 +49,8 @@ public class App {
 
     private static void run(Parameters parameters) {
         System.out.println("Initializing algorithm.");
-        ResultCache resultCache = createResultReceiver(parameters);
-        Algorithm algorithm = configureAlgorithm(parameters, resultCache);
+        ResultReceiver resultReceiver = createResultReceiver(parameters);
+        Algorithm algorithm = configureAlgorithm(parameters, resultReceiver);
 
         final long startTimeMillis = System.currentTimeMillis();
         try {
@@ -63,8 +64,10 @@ public class App {
         }
 
         // Handle "file:exec-id" formats properly.
+        ResultCache resultCache;
         switch (parameters.output.split(":")[0]) {
             case "print":
+                resultCache = (ResultCache) resultReceiver;
                 System.out.println("Results:");
                 for (Result result : resultCache.fetchNewResults()) {
                     System.out.println(result);
@@ -73,21 +76,27 @@ public class App {
             default:
                 System.out.printf("Unknown output mode \"%s\". Defaulting to \"file\"\n", parameters.output);
             case "file":
+            case "none":
                 try {
-                    resultCache.close();
+                    resultReceiver.close();
                 } catch (IOException e) {
                     System.err.println("Storing the result failed.");
                     e.printStackTrace();
                     System.exit(4);
                 }
                 break;
-            case "none":
-                break;
         }
     }
 
-    private static ResultCache createResultReceiver(Parameters parameters) {
+    private static ResultReceiver createResultReceiver(Parameters parameters) {
         String executionId;
+        if (parameters.output.equalsIgnoreCase("none")) {
+            try {
+                return new DiscardingResultReceiver();
+            } catch (FileNotFoundException e) {
+                throw new RuntimeException(e);
+            }
+        }
         if (parameters.output.startsWith("file:")) {
             executionId = parameters.output.substring("file:".length());
         } else {
@@ -123,16 +132,16 @@ public class App {
     /**
      * Instantiate and configure an {@link Algorithm} instance according to the {@link Parameters}.
      *
-     * @param parameters  tell which {@link Algorithm} to instantiate and provides its properties.
-     * @param resultCache that should be used by the {@link Algorithm} to store results
+     * @param parameters     tell which {@link Algorithm} to instantiate and provides its properties.
+     * @param resultReceiver that should be used by the {@link Algorithm} to store results
      * @return the configured {@link Algorithm} instance
      */
-    private static Algorithm configureAlgorithm(Parameters parameters, ResultCache resultCache) {
+    private static Algorithm configureAlgorithm(Parameters parameters, ResultReceiver resultReceiver) {
         try {
             final Algorithm algorithm = createAlgorithm(parameters.algorithmClassName);
             loadMiscConfigurations(parameters, algorithm);
             loadFileInputGenerators(parameters, algorithm);
-            configureResultReceiver(algorithm, resultCache);
+            configureResultReceiver(algorithm, resultReceiver);
             return algorithm;
 
         } catch (Exception e) {
@@ -295,7 +304,7 @@ public class App {
         }
     }
 
-    public static void configureResultReceiver(Algorithm algorithm, ResultCache resultReceiver) {
+    public static void configureResultReceiver(Algorithm algorithm, ResultReceiver resultReceiver) {
         boolean isAnyResultReceiverConfigured = false;
         if (algorithm instanceof FunctionalDependencyAlgorithm) {
             ((FunctionalDependencyAlgorithm) algorithm).setResultReceiver(resultReceiver);
