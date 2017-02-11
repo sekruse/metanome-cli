@@ -6,14 +6,17 @@ import com.beust.jcommander.ParameterException;
 import de.metanome.algorithm_integration.Algorithm;
 import de.metanome.algorithm_integration.AlgorithmConfigurationException;
 import de.metanome.algorithm_integration.algorithm_types.*;
-import de.metanome.algorithm_integration.configuration.ConfigurationSettingFileInput;
+import de.metanome.algorithm_integration.configuration.*;
 import de.metanome.algorithm_integration.input.FileInputGenerator;
 import de.metanome.algorithm_integration.input.RelationalInputGenerator;
+import de.metanome.algorithm_integration.input.TableInputGenerator;
 import de.metanome.algorithm_integration.results.Result;
+import de.metanome.backend.input.database.DefaultTableInputGenerator;
 import de.metanome.backend.input.file.DefaultFileInputGenerator;
 import de.metanome.backend.result_receiver.ResultCache;
 import de.metanome.backend.result_receiver.ResultReceiver;
 
+import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -140,7 +143,7 @@ public class App {
         try {
             final Algorithm algorithm = createAlgorithm(parameters.algorithmClassName);
             loadMiscConfigurations(parameters, algorithm);
-            loadFileInputGenerators(parameters, algorithm);
+            setUpInputGenerators(parameters, algorithm);
             configureResultReceiver(algorithm, resultReceiver);
             return algorithm;
 
@@ -200,50 +203,85 @@ public class App {
         }
     }
 
-    private static void loadFileInputGenerators(Parameters parameters, Algorithm algorithm) throws AlgorithmConfigurationException {
-        if (algorithm instanceof RelationalInputParameterAlgorithm) {
-            List<RelationalInputGenerator> inputGenerators = new LinkedList<>();
-            for (int i = 0; i < parameters.inputDatasets.size(); i++) {
-                inputGenerators.addAll(createInputGenerators(parameters, i));
-            }
-            ((RelationalInputParameterAlgorithm) algorithm).setRelationalInputConfigurationValue(
-                    parameters.inputDatasetKey,
-                    inputGenerators.toArray(new RelationalInputGenerator[inputGenerators.size()])
+    private static void setUpInputGenerators(Parameters parameters, Algorithm algorithm) throws AlgorithmConfigurationException {
+        if (parameters.pgpassPath != null) {
+            // We assume that we are given table inputs.
+            ConfigurationSettingDatabaseConnection databaseSettings = loadConfigurationSettingDatabaseConnection(
+                    parameters.pgpassPath, parameters.dbType
             );
+            if (algorithm instanceof RelationalInputParameterAlgorithm) {
+                List<RelationalInputGenerator> inputGenerators = new LinkedList<>();
+                for (int i = 0; i < parameters.inputDatasets.size(); i++) {
+                    inputGenerators.addAll(createTableInputGenerators(parameters, i, databaseSettings));
+                }
+                ((RelationalInputParameterAlgorithm) algorithm).setRelationalInputConfigurationValue(
+                        parameters.inputDatasetKey,
+                        inputGenerators.toArray(new RelationalInputGenerator[inputGenerators.size()])
+                );
 
-        } else if (algorithm instanceof FileInputParameterAlgorithm) {
-            List<FileInputGenerator> inputGenerators = new LinkedList<>();
-            for (int i = 0; i < parameters.inputDatasets.size(); i++) {
-                inputGenerators.addAll(createInputGenerators(parameters, i));
+            } else if (algorithm instanceof TableInputParameterAlgorithm) {
+                List<TableInputGenerator> inputGenerators = new LinkedList<>();
+                for (int i = 0; i < parameters.inputDatasets.size(); i++) {
+                    inputGenerators.addAll(createTableInputGenerators(parameters, i, databaseSettings));
+                }
+                ((TableInputParameterAlgorithm) algorithm).setTableInputConfigurationValue(
+                        parameters.inputDatasetKey,
+                        inputGenerators.toArray(new TableInputGenerator[inputGenerators.size()])
+                );
+
+            } else {
+                System.err.printf("Algorithm does not implement a supported input method (relational/tables).\n");
+                System.exit(5);
+                return;
             }
-            ((FileInputParameterAlgorithm) algorithm).setFileInputConfigurationValue(
-                    parameters.inputDatasetKey,
-                    inputGenerators.toArray(new FileInputGenerator[inputGenerators.size()])
-            );
 
         } else {
-            System.err.printf("Algorithm does not implement a supported input method (relational/files).\n");
-            System.exit(5);
-            return;
+            // We assume that we are given file inputs.
+            if (algorithm instanceof RelationalInputParameterAlgorithm) {
+                List<RelationalInputGenerator> inputGenerators = new LinkedList<>();
+                for (int i = 0; i < parameters.inputDatasets.size(); i++) {
+                    inputGenerators.addAll(createFileInputGenerators(parameters, i));
+                }
+                ((RelationalInputParameterAlgorithm) algorithm).setRelationalInputConfigurationValue(
+                        parameters.inputDatasetKey,
+                        inputGenerators.toArray(new RelationalInputGenerator[inputGenerators.size()])
+                );
+
+            } else if (algorithm instanceof FileInputParameterAlgorithm) {
+                List<FileInputGenerator> inputGenerators = new LinkedList<>();
+                for (int i = 0; i < parameters.inputDatasets.size(); i++) {
+                    inputGenerators.addAll(createFileInputGenerators(parameters, i));
+                }
+                ((FileInputParameterAlgorithm) algorithm).setFileInputConfigurationValue(
+                        parameters.inputDatasetKey,
+                        inputGenerators.toArray(new FileInputGenerator[inputGenerators.size()])
+                );
+
+            } else {
+                System.err.printf("Algorithm does not implement a supported input method (relational/files).\n");
+                System.exit(5);
+                return;
+            }
+
         }
     }
 
     /**
-     * Create a new {@link DefaultFileInputGenerator}.
+     * Create a {@link DefaultFileInputGenerator}s.
      *
      * @param parameters     defines how to configure the {@link DefaultFileInputGenerator}
      * @param parameterIndex index of the dataset parameter to create the {@link DefaultFileInputGenerator}s for
      * @return the {@link DefaultFileInputGenerator}s
      * @throws AlgorithmConfigurationException
      */
-    private static Collection<DefaultFileInputGenerator> createInputGenerators(Parameters parameters, int parameterIndex) throws AlgorithmConfigurationException {
+    private static Collection<DefaultFileInputGenerator> createFileInputGenerators(Parameters parameters, int parameterIndex) throws AlgorithmConfigurationException {
         final String parameter = parameters.inputDatasets.get(parameterIndex);
         if (parameter.startsWith("load:")) {
             try {
                 return Files.lines(Paths.get(parameter.substring("load:".length())))
                         .map(path -> {
                             try {
-                                return createInputGenerator(parameters, path);
+                                return createFileInputGenerator(parameters, path);
                             } catch (AlgorithmConfigurationException e) {
                                 throw new RuntimeException("Could not create input generator.", e);
                             }
@@ -260,12 +298,12 @@ public class App {
             }
         } else {
             return Collections.singleton(
-                    createInputGenerator(parameters, parameter)
+                    createFileInputGenerator(parameters, parameter)
             );
         }
     }
 
-    private static DefaultFileInputGenerator createInputGenerator(Parameters parameters, String path) throws AlgorithmConfigurationException {
+    private static DefaultFileInputGenerator createFileInputGenerator(Parameters parameters, String path) throws AlgorithmConfigurationException {
         return new DefaultFileInputGenerator(new ConfigurationSettingFileInput(
                 path,
                 true,
@@ -278,6 +316,90 @@ public class App {
                 parameters.inputFileHasHeader,
                 parameters.inputFileSkipDifferingLines,
                 parameters.inputFileNullString
+        ));
+    }
+
+    private static ConfigurationSettingDatabaseConnection loadConfigurationSettingDatabaseConnection(
+            String pgpassPath, String dbType) throws AlgorithmConfigurationException {
+        try {
+            String firstLine = Files.lines(new File(pgpassPath).toPath()).findFirst().orElseThrow(
+                    () -> new AlgorithmConfigurationException("Could not load PGPass file.")
+            );
+            int colonPos1 = firstLine.indexOf(':');
+            int colonPos2 = firstLine.indexOf(':', colonPos1 + 1);
+            int colonPos3 = firstLine.indexOf(':', colonPos2 + 1);
+            int colonPos4 = firstLine.indexOf(':', colonPos3 + 1);
+            if (colonPos4 == -1) {
+                throw new IllegalArgumentException("Cannot parse PGPass file.");
+            }
+            String host = firstLine.substring(0, colonPos1);
+            String port = firstLine.substring(colonPos1 + 1, colonPos2);
+            String dbName = firstLine.substring(colonPos2 + 1, colonPos3);
+            String user = firstLine.substring(colonPos3 + 1, colonPos4);
+            String password = firstLine.substring(colonPos4 + 1);
+
+            // TODO: Consider special JDBC URL formats, such as Oracle Thin.
+            String jdbcUrl = String.format("jdbc:%s://%s:%s/%s", dbType, host, port, dbName);
+            DbSystem dbSystem = DbSystem.PostgreSQL;
+            if ("postgres".equalsIgnoreCase(dbType)) {
+                dbSystem = DbSystem.PostgreSQL;
+            } else if ("mysql".equalsIgnoreCase(dbType)) {
+                dbSystem = DbSystem.MySQL;
+            } else {
+                // TODO: Consider other DB types. But it does not seem that this is a crucial piece of information for Metanome.
+            }
+            return new ConfigurationSettingDatabaseConnection(
+                    jdbcUrl, user, password, dbSystem
+            );
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
+
+    /**
+     * Create a {@link DefaultTableInputGenerator}s.
+     *
+     * @param parameters     defines how to configure the {@link DefaultTableInputGenerator}
+     * @param parameterIndex index of the dataset parameter to create the {@link DefaultTableInputGenerator}s for
+     * @return the {@link DefaultFileInputGenerator}s
+     * @throws AlgorithmConfigurationException
+     */
+    private static Collection<DefaultTableInputGenerator> createTableInputGenerators(
+            Parameters parameters,
+            int parameterIndex,
+            ConfigurationSettingDatabaseConnection databaseSettings) throws AlgorithmConfigurationException {
+        final String parameter = parameters.inputDatasets.get(parameterIndex);
+        if (parameter.startsWith("load:")) {
+            try {
+                return Files.lines(Paths.get(parameter.substring("load:".length())))
+                        .map(table -> {
+                            try {
+                                return createTableInputGenerator(databaseSettings, table);
+                            } catch (AlgorithmConfigurationException e) {
+                                throw new RuntimeException("Could not create input generator.", e);
+                            }
+                        })
+                        .collect(Collectors.toList());
+            } catch (IOException e) {
+                throw new UncheckedIOException("Could not load input specification file.", e);
+            } catch (RuntimeException e) {
+                if (e.getCause() != null && (e.getCause() instanceof AlgorithmConfigurationException)) {
+                    throw (AlgorithmConfigurationException) e.getCause();
+                } else {
+                    throw e;
+                }
+            }
+        } else {
+            return Collections.singleton(
+                    createTableInputGenerator(databaseSettings, parameter)
+            );
+        }
+    }
+
+    private static DefaultTableInputGenerator createTableInputGenerator(
+            ConfigurationSettingDatabaseConnection configurationSettingDatabaseConnection, String table) throws AlgorithmConfigurationException {
+        return new DefaultTableInputGenerator(new ConfigurationSettingTableInput(
+                table, configurationSettingDatabaseConnection
         ));
     }
 
@@ -337,11 +459,17 @@ public class App {
         @Parameter(names = {"-a", "--algorithm"}, description = "name of the Metanome algorithm class", required = true)
         public String algorithmClassName;
 
-        @Parameter(names = "--file-key", description = "configuration key for the input files", required = true)
+        @Parameter(names = {"--file-key", "--input-key", "--table-key"}, description = "configuration key for the input files/tables", required = true)
         public String inputDatasetKey;
 
-        @Parameter(names = "--files", description = "input file to be analyzed and/or files list input files (prefixed with 'load:')", required = true, variableArity = true)
+        @Parameter(names = {"--files", "--inputs", "--tables"}, description = "input file/tables to be analyzed and/or files list input files/tables (prefixed with 'load:')", required = true, variableArity = true)
         public List<String> inputDatasets = new ArrayList<>();
+
+        @Parameter(names = "--db-connection", description = "a PGPASS file that specifies the database connection; if given, the inputs are treated as database tables", required = false)
+        public String pgpassPath = null;
+
+        @Parameter(names = "--db-type", description = "the type of database as it would appear in a JDBC URL", required = false)
+        public String dbType = null;
 
         @Parameter(names = "--separator", description = "separates fields in the input file")
         public String inputFileSeparator = ";";
