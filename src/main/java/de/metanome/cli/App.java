@@ -6,7 +6,10 @@ import com.beust.jcommander.ParameterException;
 import de.metanome.algorithm_integration.Algorithm;
 import de.metanome.algorithm_integration.AlgorithmConfigurationException;
 import de.metanome.algorithm_integration.algorithm_types.*;
-import de.metanome.algorithm_integration.configuration.*;
+import de.metanome.algorithm_integration.configuration.ConfigurationSettingDatabaseConnection;
+import de.metanome.algorithm_integration.configuration.ConfigurationSettingFileInput;
+import de.metanome.algorithm_integration.configuration.ConfigurationSettingTableInput;
+import de.metanome.algorithm_integration.configuration.DbSystem;
 import de.metanome.algorithm_integration.input.FileInputGenerator;
 import de.metanome.algorithm_integration.input.RelationalInputGenerator;
 import de.metanome.algorithm_integration.input.TableInputGenerator;
@@ -14,6 +17,7 @@ import de.metanome.algorithm_integration.results.Result;
 import de.metanome.backend.input.database.DefaultTableInputGenerator;
 import de.metanome.backend.input.file.DefaultFileInputGenerator;
 import de.metanome.backend.result_receiver.ResultCache;
+import de.metanome.backend.result_receiver.ResultPrinter;
 import de.metanome.backend.result_receiver.ResultReceiver;
 
 import java.io.File;
@@ -78,6 +82,7 @@ public class App {
                 break;
             default:
                 System.out.printf("Unknown output mode \"%s\". Defaulting to \"file\"\n", parameters.output);
+            case "file!":
             case "file":
             case "none":
                 try {
@@ -100,8 +105,24 @@ public class App {
                 throw new RuntimeException(e);
             }
         }
+        boolean isCaching;
         if (parameters.output.startsWith("file:")) {
             executionId = parameters.output.substring("file:".length());
+            isCaching = true;
+        } else if (parameters.output.startsWith("file!:")) {
+            executionId = parameters.output.substring("file!:".length());
+            isCaching = false;
+        } else if (parameters.output.equalsIgnoreCase("file!")) {
+            Calendar calendar = GregorianCalendar.getInstance();
+            executionId = String.format("%04d-%02d-%02d_%02d-%02d-%02d",
+                    calendar.get(Calendar.YEAR),
+                    calendar.get(Calendar.MONTH) + 1,
+                    calendar.get(Calendar.DATE),
+                    calendar.get(Calendar.HOUR_OF_DAY),
+                    calendar.get(Calendar.MINUTE),
+                    calendar.get(Calendar.SECOND)
+            );
+            isCaching = false;
         } else {
             Calendar calendar = GregorianCalendar.getInstance();
             executionId = String.format("%04d-%02d-%02d_%02d-%02d-%02d",
@@ -112,9 +133,12 @@ public class App {
                     calendar.get(Calendar.MINUTE),
                     calendar.get(Calendar.SECOND)
             );
+            isCaching = true;
         }
         try {
-            return new ResultCache(executionId, null);
+            return isCaching ?
+                    new ResultCache(executionId, null) :
+                    new ResultPrinter(executionId, null);
         } catch (FileNotFoundException e) {
             throw new RuntimeException("Unexpected exception.", e);
         }
