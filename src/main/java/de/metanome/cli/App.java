@@ -19,6 +19,7 @@ import de.metanome.backend.input.file.DefaultFileInputGenerator;
 import de.metanome.backend.result_receiver.ResultCache;
 import de.metanome.backend.result_receiver.ResultPrinter;
 import de.metanome.backend.result_receiver.ResultReceiver;
+import org.apache.lucene.util.mutable.MutableValueDate;
 
 import java.io.File;
 import java.io.FileNotFoundException;
@@ -464,6 +465,21 @@ public class App {
 
         if (algorithm instanceof UniqueColumnCombinationsAlgorithm) {
             ((UniqueColumnCombinationsAlgorithm) algorithm).setResultReceiver(resultReceiver);
+            isAnyResultReceiverConfigured = true;
+        }
+
+        if (algorithm instanceof BasicStatisticsAlgorithm) {
+            ((BasicStatisticsAlgorithm) algorithm).setResultReceiver(resultReceiver);
+            isAnyResultReceiverConfigured = true;
+        }
+
+        if (algorithm instanceof OrderDependencyAlgorithm) {
+            ((OrderDependencyAlgorithm) algorithm).setResultReceiver(resultReceiver);
+            isAnyResultReceiverConfigured = true;
+        }
+
+        if (algorithm instanceof MultivaluedDependencyAlgorithm) {
+            ((MultivaluedDependencyAlgorithm) algorithm).setResultReceiver(resultReceiver);
             isAnyResultReceiverConfigured = true;
         }
 
