@@ -432,6 +432,8 @@ public class App {
         if (string == null || string.isEmpty()) return '\0';
         else if (string.length() == 1) return string.charAt(0);
         switch (string) {
+            case "none":
+                return '\0';
             case "\\t":
             case "tab":
                 return '\t';
