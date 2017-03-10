@@ -59,6 +59,11 @@ public class App {
     }
 
     private static void run(Parameters parameters) {
+        System.out.printf("Running %s\n", parameters.algorithmClassName);
+        System.out.printf("* in:            %s\n", parameters.inputDatasets);
+        System.out.printf("* out:           %s\n", parameters.output);
+        System.out.printf("* configuration: %s\n", parameters.algorithmConfigurationValues);
+
         System.out.println("Initializing algorithm.");
         OmniscientResultReceiver resultReceiver = createResultReceiver(parameters);
         Algorithm algorithm = configureAlgorithm(parameters, resultReceiver);
