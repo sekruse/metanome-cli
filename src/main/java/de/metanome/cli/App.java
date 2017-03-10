@@ -3,6 +3,13 @@ package de.metanome.cli;
 import com.beust.jcommander.JCommander;
 import com.beust.jcommander.Parameter;
 import com.beust.jcommander.ParameterException;
+import de.hpi.isg.mdms.clients.MetacrateClient;
+import de.hpi.isg.mdms.clients.parameters.MetadataStoreParameters;
+import de.hpi.isg.mdms.clients.util.MetadataStoreUtil;
+import de.hpi.isg.mdms.model.MetadataStore;
+import de.hpi.isg.mdms.model.targets.Schema;
+import de.hpi.isg.mdms.model.targets.Target;
+import de.hpi.isg.mdms.tools.metanome.MetacrateResultReceiver;
 import de.metanome.algorithm_integration.Algorithm;
 import de.metanome.algorithm_integration.AlgorithmConfigurationException;
 import de.metanome.algorithm_integration.algorithm_types.*;
@@ -13,18 +20,14 @@ import de.metanome.algorithm_integration.configuration.DbSystem;
 import de.metanome.algorithm_integration.input.FileInputGenerator;
 import de.metanome.algorithm_integration.input.RelationalInputGenerator;
 import de.metanome.algorithm_integration.input.TableInputGenerator;
+import de.metanome.algorithm_integration.result_receiver.OmniscientResultReceiver;
 import de.metanome.algorithm_integration.results.Result;
 import de.metanome.backend.input.database.DefaultTableInputGenerator;
 import de.metanome.backend.input.file.DefaultFileInputGenerator;
 import de.metanome.backend.result_receiver.ResultCache;
 import de.metanome.backend.result_receiver.ResultPrinter;
-import de.metanome.backend.result_receiver.ResultReceiver;
-import org.apache.lucene.util.mutable.MutableValueDate;
 
-import java.io.File;
-import java.io.FileNotFoundException;
-import java.io.IOException;
-import java.io.UncheckedIOException;
+import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.*;
@@ -57,7 +60,7 @@ public class App {
 
     private static void run(Parameters parameters) {
         System.out.println("Initializing algorithm.");
-        ResultReceiver resultReceiver = createResultReceiver(parameters);
+        OmniscientResultReceiver resultReceiver = createResultReceiver(parameters);
         Algorithm algorithm = configureAlgorithm(parameters, resultReceiver);
 
         final long startTimeMillis = System.currentTimeMillis();
@@ -67,6 +70,14 @@ public class App {
             System.err.printf("Algorithm crashed.\n");
             e.printStackTrace();
         } finally {
+            if (resultReceiver instanceof MetacrateResultReceiver) {
+                try {
+                    ((MetacrateResultReceiver) resultReceiver).getMetadataStore().flush();
+                } catch (Exception e) {
+                    System.err.println("Could not flush Metacrate.");
+                    e.printStackTrace();
+                }
+            }
             long endTimeMillis = System.currentTimeMillis();
             System.out.printf("Elapsed time: %s.\n", formatDuration(endTimeMillis - startTimeMillis));
         }
@@ -83,11 +94,25 @@ public class App {
                 break;
             default:
                 System.out.printf("Unknown output mode \"%s\". Defaulting to \"file\"\n", parameters.output);
+            case "crate":
+                if (resultReceiver instanceof MetacrateResultReceiver) {
+                    try {
+                        MetacrateResultReceiver metacrateResultReceiver = (MetacrateResultReceiver) resultReceiver;
+                        metacrateResultReceiver.close();
+                        break;
+                    } catch (Exception e) {
+                        System.err.println("Storing the result failed.");
+                        e.printStackTrace();
+                        System.exit(4);
+                    }
+                }
             case "file!":
             case "file":
             case "none":
                 try {
-                    resultReceiver.close();
+                    if (resultReceiver instanceof Closeable) {
+                        ((Closeable) resultReceiver).close();
+                    }
                 } catch (IOException e) {
                     System.err.println("Storing the result failed.");
                     e.printStackTrace();
@@ -97,7 +122,7 @@ public class App {
         }
     }
 
-    private static ResultReceiver createResultReceiver(Parameters parameters) {
+    private static OmniscientResultReceiver createResultReceiver(Parameters parameters) {
         String executionId;
         if (parameters.output.equalsIgnoreCase("none")) {
             try {
@@ -105,7 +130,30 @@ public class App {
             } catch (FileNotFoundException e) {
                 throw new RuntimeException(e);
             }
+        } else if (parameters.output.startsWith("crate:")) {
+            int lastColonIndex = parameters.output.lastIndexOf(":");
+            if (lastColonIndex == "crate:".length() - 1) {
+                throw new IllegalArgumentException(String.format("Could not parse output \"%s\".", parameters.output));
+            }
+            String scopeIdentifier = parameters.output.substring(lastColonIndex + 1);
+            String cratePath = parameters.output.substring("crate:".length(), lastColonIndex);
+            MetadataStoreParameters metadataStoreParameters = new MetadataStoreParameters();
+            metadataStoreParameters.metadataStore = cratePath;
+            MetadataStore metadataStore = MetadataStoreUtil.loadMetadataStore(metadataStoreParameters);
+            Target scope = metadataStore.getTargetByName(scopeIdentifier);
+            if (scope == null) {
+                throw new IllegalArgumentException("No such schema element: \"" + scopeIdentifier + "\".");
+            }
+            int schemaId = metadataStore.getIdUtils().getSchemaId(scope.getId());
+            Schema schema = metadataStore.getSchemaById(schemaId);
+            return new MetacrateResultReceiver(
+                    metadataStore,
+                    schema,
+                    Collections.singleton(scope),
+                    String.format("%s (%s, %s)", parameters.algorithmClassName, new Date(), "%s")
+            );
         }
+
         boolean isCaching;
         if (parameters.output.startsWith("file:")) {
             executionId = parameters.output.substring("file:".length());
@@ -164,7 +212,7 @@ public class App {
      * @param resultReceiver that should be used by the {@link Algorithm} to store results
      * @return the configured {@link Algorithm} instance
      */
-    private static Algorithm configureAlgorithm(Parameters parameters, ResultReceiver resultReceiver) {
+    private static Algorithm configureAlgorithm(Parameters parameters, OmniscientResultReceiver resultReceiver) {
         try {
             final Algorithm algorithm = createAlgorithm(parameters.algorithmClassName);
             loadMiscConfigurations(parameters, algorithm);
@@ -453,7 +501,7 @@ public class App {
         }
     }
 
-    public static void configureResultReceiver(Algorithm algorithm, ResultReceiver resultReceiver) {
+    public static void configureResultReceiver(Algorithm algorithm, OmniscientResultReceiver resultReceiver) {
         boolean isAnyResultReceiverConfigured = false;
         if (algorithm instanceof FunctionalDependencyAlgorithm) {
             ((FunctionalDependencyAlgorithm) algorithm).setResultReceiver(resultReceiver);
@@ -483,6 +531,10 @@ public class App {
         if (algorithm instanceof MultivaluedDependencyAlgorithm) {
             ((MultivaluedDependencyAlgorithm) algorithm).setResultReceiver(resultReceiver);
             isAnyResultReceiverConfigured = true;
+        }
+
+        if (algorithm instanceof MetacrateClient && resultReceiver instanceof MetacrateResultReceiver) {
+            ((MetacrateClient) algorithm).setMetadataStore(((MetacrateResultReceiver) resultReceiver).getMetadataStore());
         }
 
         if (!isAnyResultReceiverConfigured) {
@@ -540,7 +592,7 @@ public class App {
         @Parameter(names = "--null", description = "representation of NULLs")
         public String inputFileNullString = "";
 
-        @Parameter(names = {"-o", "--output"}, description = "how to output results (none/print/file[:run-ID])")
+        @Parameter(names = {"-o", "--output"}, description = "how to output results (none/print/file[:run-ID]/crate:file:scope)")
         public String output = "file";
 
     }
