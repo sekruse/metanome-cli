@@ -84,7 +84,8 @@ public class App {
                 }
             }
             long endTimeMillis = System.currentTimeMillis();
-            System.out.printf("Elapsed time: %s.\n", formatDuration(endTimeMillis - startTimeMillis));
+            long elapsedMillis = endTimeMillis - startTimeMillis;
+            System.out.printf("Elapsed time: %s (%d ms).\n", formatDuration(elapsedMillis), elapsedMillis);
         }
 
         // Handle "file:exec-id" formats properly.
