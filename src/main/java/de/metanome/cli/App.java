@@ -502,6 +502,10 @@ public class App {
             case "|":
             case "pipe":
                 return '|';
+            case "double":
+                return '"';
+            case "single":
+                return '\'';
             default:
                 throw new IllegalArgumentException(String.format("Illegal character specification: %s", string));
         }
