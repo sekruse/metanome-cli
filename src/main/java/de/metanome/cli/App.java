@@ -69,8 +69,10 @@ public class App {
         Algorithm algorithm = configureAlgorithm(parameters, resultReceiver);
 
         final long startTimeMillis = System.currentTimeMillis();
+        boolean isExecutionSuccess = false;
         try {
             algorithm.execute();
+            isExecutionSuccess = true;
         } catch (Exception e) {
             System.err.printf("Algorithm crashed.\n");
             e.printStackTrace();
@@ -126,6 +128,8 @@ public class App {
                 }
                 break;
         }
+
+        System.exit(isExecutionSuccess ? 0 : 23);
     }
 
     private static OmniscientResultReceiver createResultReceiver(Parameters parameters) {
