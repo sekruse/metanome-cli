@@ -143,6 +143,14 @@ public class App {
                     parameters.profileDbTags.toArray(new String[0])
             );
 
+            // Register additional configuration.
+            for (String spec : parameters.profileDbConf) {
+                int colonIndex = spec.indexOf(':');
+                if (colonIndex != -1) {
+                    subject.addConfiguration(spec.substring(0, colonIndex), spec.substring(colonIndex + 1));
+                }
+            }
+
             // Register measured time.
             TimeMeasurement timeMeasurement = new TimeMeasurement("execution-millis");
             timeMeasurement.setMillis(elapsedMillis);
@@ -248,14 +256,14 @@ public class App {
      *
      * @param parameters     tell which {@link Algorithm} to instantiate and provides its properties.
      * @param resultReceiver that should be used by the {@link Algorithm} to store results
-     * @param subject
+     * @param subject        stores the configuration for a ProfileDB {@link Experiment}
      * @return the configured {@link Algorithm} instance
      */
     private static Algorithm configureAlgorithm(Parameters parameters, OmniscientResultReceiver resultReceiver, Subject subject) {
         try {
             final Algorithm algorithm = createAlgorithm(parameters.algorithmClassName);
             loadMiscConfigurations(parameters, algorithm, subject);
-            setUpInputGenerators(parameters, algorithm);
+            setUpInputGenerators(parameters, algorithm, subject);
             configureResultReceiver(algorithm, resultReceiver);
             return algorithm;
 
@@ -318,7 +326,7 @@ public class App {
         }
     }
 
-    private static void setUpInputGenerators(Parameters parameters, Algorithm algorithm) throws AlgorithmConfigurationException {
+    private static void setUpInputGenerators(Parameters parameters, Algorithm algorithm, Subject subject) throws AlgorithmConfigurationException {
         if (parameters.pgpassPath != null) {
             // We assume that we are given table inputs.
             ConfigurationSettingDatabaseConnection databaseSettings = loadConfigurationSettingDatabaseConnection(
@@ -377,8 +385,9 @@ public class App {
                 System.exit(5);
                 return;
             }
-
         }
+
+        subject.addConfiguration(parameters.inputDatasetKey, parameters.inputDatasets);
     }
 
     /**
@@ -646,6 +655,9 @@ public class App {
 
         @Parameter(names = "--profiledb-tags", description = "tags to store with a ProfileDB experiment", variableArity = true)
         public List<String> profileDbTags = new LinkedList<>();
+
+        @Parameter(names = "--profiledb-conf", description = "additional configuration to store with a ProfileDB experiment", variableArity = true)
+        public List<String> profileDbConf = new LinkedList<>();
 
         @Parameter(names = "--profiledb", description = "location of a ProfileDB to store a ProfileDB experiment at")
         public String profileDbLocation;
