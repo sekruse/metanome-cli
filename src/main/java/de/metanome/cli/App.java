@@ -10,6 +10,10 @@ import de.hpi.isg.mdms.model.MetadataStore;
 import de.hpi.isg.mdms.model.targets.Schema;
 import de.hpi.isg.mdms.model.targets.Target;
 import de.hpi.isg.mdms.tools.metanome.MetacrateResultReceiver;
+import de.hpi.isg.profiledb.ProfileDB;
+import de.hpi.isg.profiledb.store.model.Experiment;
+import de.hpi.isg.profiledb.store.model.Subject;
+import de.hpi.isg.profiledb.store.model.TimeMeasurement;
 import de.metanome.algorithm_integration.Algorithm;
 import de.metanome.algorithm_integration.AlgorithmConfigurationException;
 import de.metanome.algorithm_integration.algorithm_types.*;
@@ -65,10 +69,12 @@ public class App {
         System.out.printf("* configuration: %s\n", parameters.algorithmConfigurationValues);
 
         System.out.println("Initializing algorithm.");
+        Subject subject = new Subject(parameters.algorithmClassName, "?");
         OmniscientResultReceiver resultReceiver = createResultReceiver(parameters);
-        Algorithm algorithm = configureAlgorithm(parameters, resultReceiver);
+        Algorithm algorithm = configureAlgorithm(parameters, resultReceiver, subject);
 
         final long startTimeMillis = System.currentTimeMillis();
+        long elapsedMillis;
         boolean isExecutionSuccess = false;
         try {
             algorithm.execute();
@@ -86,7 +92,7 @@ public class App {
                 }
             }
             long endTimeMillis = System.currentTimeMillis();
-            long elapsedMillis = endTimeMillis - startTimeMillis;
+            elapsedMillis = endTimeMillis - startTimeMillis;
             System.out.printf("Elapsed time: %s (%d ms).\n", formatDuration(elapsedMillis), elapsedMillis);
         }
 
@@ -127,6 +133,28 @@ public class App {
                     System.exit(4);
                 }
                 break;
+        }
+
+        if (isExecutionSuccess && parameters.profileDbKey != null && parameters.profileDbLocation != null) {
+            // Create an experiment.
+            Experiment experiment = new Experiment(
+                    parameters.profileDbKey,
+                    subject,
+                    parameters.profileDbTags.toArray(new String[0])
+            );
+
+            // Register measured time.
+            TimeMeasurement timeMeasurement = new TimeMeasurement("execution-millis");
+            timeMeasurement.setMillis(elapsedMillis);
+            experiment.addMeasurement(timeMeasurement);
+
+            // Store the experiment.
+            try {
+                new ProfileDB().append(new File(parameters.profileDbLocation), experiment);
+            } catch (IOException e) {
+                System.err.printf("Could not store ProfileDB experiment: %s\n", e.getMessage());
+                e.printStackTrace();
+            }
         }
 
         System.exit(isExecutionSuccess ? 0 : 23);
@@ -220,12 +248,13 @@ public class App {
      *
      * @param parameters     tell which {@link Algorithm} to instantiate and provides its properties.
      * @param resultReceiver that should be used by the {@link Algorithm} to store results
+     * @param subject
      * @return the configured {@link Algorithm} instance
      */
-    private static Algorithm configureAlgorithm(Parameters parameters, OmniscientResultReceiver resultReceiver) {
+    private static Algorithm configureAlgorithm(Parameters parameters, OmniscientResultReceiver resultReceiver, Subject subject) {
         try {
             final Algorithm algorithm = createAlgorithm(parameters.algorithmClassName);
-            loadMiscConfigurations(parameters, algorithm);
+            loadMiscConfigurations(parameters, algorithm, subject);
             setUpInputGenerators(parameters, algorithm);
             configureResultReceiver(algorithm, resultReceiver);
             return algorithm;
@@ -243,7 +272,7 @@ public class App {
         return (Algorithm) algorithmClass.newInstance();
     }
 
-    private static void loadMiscConfigurations(Parameters parameters, Algorithm algorithm) throws AlgorithmConfigurationException {
+    private static void loadMiscConfigurations(Parameters parameters, Algorithm algorithm, Subject subject) throws AlgorithmConfigurationException {
         for (String algorithmConfigurationValue : parameters.algorithmConfigurationValues) {
             int colonPos = algorithmConfigurationValue.indexOf(':');
             final String key = algorithmConfigurationValue.substring(0, colonPos);
@@ -252,17 +281,20 @@ public class App {
             Boolean booleanValue = tryToParseBoolean(value);
             if (algorithm instanceof BooleanParameterAlgorithm && booleanValue != null) {
                 ((BooleanParameterAlgorithm) algorithm).setBooleanConfigurationValue(key, booleanValue);
+                subject.addConfiguration(key, booleanValue);
                 continue;
             }
 
             Integer intValue = tryToParseInteger(value);
             if (algorithm instanceof IntegerParameterAlgorithm && intValue != null) {
                 ((IntegerParameterAlgorithm) algorithm).setIntegerConfigurationValue(key, intValue);
+                subject.addConfiguration(key, intValue);
                 continue;
             }
 
             if (algorithm instanceof StringParameterAlgorithm) {
                 ((StringParameterAlgorithm) algorithm).setStringConfigurationValue(key, value);
+                subject.addConfiguration(key, value);
                 continue;
             }
 
@@ -608,6 +640,15 @@ public class App {
 
         @Parameter(names = {"-o", "--output"}, description = "how to output results (none/print/file[:run-ID]/crate:file:scope)")
         public String output = "file";
+
+        @Parameter(names = "--profiledb-key", description = "experiment key to store a ProfileDB experiment")
+        public String profileDbKey;
+
+        @Parameter(names = "--profiledb-tags", description = "tags to store with a ProfileDB experiment", variableArity = true)
+        public List<String> profileDbTags = new LinkedList<>();
+
+        @Parameter(names = "--profiledb", description = "location of a ProfileDB to store a ProfileDB experiment at")
+        public String profileDbLocation;
 
     }
 }

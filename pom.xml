@@ -45,6 +45,11 @@
             <artifactId>jackson-annotations</artifactId>
             <version>2.7.1</version>
         </dependency>
+        <dependency>
+            <groupId>de.hpi.isg</groupId>
+            <artifactId>profiledb-store</artifactId>
+            <version>0.1.1</version>
+        </dependency>
 
         <dependency>
             <groupId>de.hpi.isg</groupId>
