@@ -363,27 +363,45 @@ public class App {
             if (algorithm instanceof RelationalInputParameterAlgorithm) {
                 List<RelationalInputGenerator> inputGenerators = new LinkedList<>();
                 for (int i = 0; i < parameters.inputDatasets.size(); i++) {
-                    inputGenerators.addAll(createFileInputGenerators(parameters, i));
+                    inputGenerators.addAll(createFileInputGenerators(parameters, i, RelationalInputGenerator.class));
                 }
                 ((RelationalInputParameterAlgorithm) algorithm).setRelationalInputConfigurationValue(
                         parameters.inputDatasetKey,
                         inputGenerators.toArray(new RelationalInputGenerator[inputGenerators.size()])
                 );
 
-            } else if (algorithm instanceof FileInputParameterAlgorithm) {
-                List<FileInputGenerator> inputGenerators = new LinkedList<>();
-                for (int i = 0; i < parameters.inputDatasets.size(); i++) {
-                    inputGenerators.addAll(createFileInputGenerators(parameters, i));
-                }
-                ((FileInputParameterAlgorithm) algorithm).setFileInputConfigurationValue(
-                        parameters.inputDatasetKey,
-                        inputGenerators.toArray(new FileInputGenerator[inputGenerators.size()])
-                );
-
             } else {
-                System.err.printf("Algorithm does not implement a supported input method (relational/files).\n");
-                System.exit(5);
-                return;
+                boolean isAnyInput = false;
+                if (algorithm instanceof FileInputParameterAlgorithm) {
+                    List<FileInputGenerator> inputGenerators = new LinkedList<>();
+                    for (int i = 0; i < parameters.inputDatasets.size(); i++) {
+                        inputGenerators.addAll(createFileInputGenerators(parameters, i, FileInputGenerator.class));
+                    }
+                    ((FileInputParameterAlgorithm) algorithm).setFileInputConfigurationValue(
+                            parameters.inputDatasetKey,
+                            inputGenerators.toArray(new FileInputGenerator[inputGenerators.size()])
+                    );
+                    isAnyInput = true;
+                }
+
+                if (algorithm instanceof HdfsInputParameterAlgorithm) {
+                    List<HdfsInputGenerator> inputGenerators = new LinkedList<>();
+                    for (int i = 0; i < parameters.inputDatasets.size(); i++) {
+                        inputGenerators.addAll(createFileInputGenerators(parameters, i, HdfsInputGenerator.class));
+                    }
+                    ((HdfsInputParameterAlgorithm) algorithm).setHdfsInputConfigurationValue(
+                            parameters.inputDatasetKey,
+                            inputGenerators.toArray(new HdfsInputGenerator[inputGenerators.size()])
+                    );
+                    isAnyInput = true;
+
+                }
+
+                if (!isAnyInput) {
+                    System.err.printf("Algorithm does not implement a supported input method (relational/files).\n");
+                    System.exit(5);
+                    return;
+                }
             }
         }
 
@@ -395,21 +413,25 @@ public class App {
      *
      * @param parameters     defines how to configure the {@link DefaultFileInputGenerator}
      * @param parameterIndex index of the dataset parameter to create the {@link DefaultFileInputGenerator}s for
+     * @param cls            create {@link RelationalInputGenerator}s must be a subclass
      * @return the {@link DefaultFileInputGenerator}s
      * @throws AlgorithmConfigurationException
      */
-    private static Collection<DefaultFileInputGenerator> createFileInputGenerators(Parameters parameters, int parameterIndex) throws AlgorithmConfigurationException {
+    private static <T extends RelationalInputGenerator> Collection<T> createFileInputGenerators(
+            Parameters parameters, int parameterIndex, Class<T> cls
+    ) throws AlgorithmConfigurationException {
         final String parameter = parameters.inputDatasets.get(parameterIndex);
         if (parameter.startsWith("load:")) {
             try {
                 return Files.lines(Paths.get(parameter.substring("load:".length())))
                         .map(path -> {
                             try {
-                                return createFileInputGenerator(parameters, path);
+                                return createFileInputGenerator(parameters, path, cls);
                             } catch (AlgorithmConfigurationException e) {
                                 throw new RuntimeException("Could not create input generator.", e);
                             }
                         })
+                        .filter(Objects::nonNull)
                         .collect(Collectors.toList());
             } catch (IOException e) {
                 throw new UncheckedIOException("Could not load input specification file.", e);
@@ -421,14 +443,16 @@ public class App {
                 }
             }
         } else {
-            return Collections.singleton(
-                    createFileInputGenerator(parameters, parameter)
-            );
+            T inputGenerator = createFileInputGenerator(parameters, parameter, cls);
+            return inputGenerator == null ? Collections.emptyList() : Collections.singleton(inputGenerator);
         }
     }
 
-    private static DefaultFileInputGenerator createFileInputGenerator(Parameters parameters, String path) throws AlgorithmConfigurationException {
-        return new DefaultFileInputGenerator(new ConfigurationSettingFileInput(
+    @SuppressWarnings("unchecked")
+    private static <T extends RelationalInputGenerator> T createFileInputGenerator(
+            Parameters parameters, String path, Class<T> cls
+    ) throws AlgorithmConfigurationException {
+        ConfigurationSettingFileInput setting = new ConfigurationSettingFileInput(
                 path,
                 true,
                 toChar(parameters.inputFileSeparator),
@@ -440,7 +464,17 @@ public class App {
                 parameters.inputFileHasHeader,
                 parameters.inputFileSkipDifferingLines,
                 parameters.inputFileNullString
-        ));
+        );
+        RelationalInputGenerator generator;
+        if (path.startsWith("hdfs://")) {
+            generator = new HdfsInputGenerator(setting);
+        } else {
+            generator = new DefaultFileInputGenerator(setting);
+        }
+        if (!cls.isAssignableFrom(generator.getClass())) {
+            return null;
+        }
+        return (T) generator;
     }
 
     private static ConfigurationSettingDatabaseConnection loadConfigurationSettingDatabaseConnection(
