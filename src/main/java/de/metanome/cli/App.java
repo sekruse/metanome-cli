@@ -69,9 +69,18 @@ public class App {
         System.out.printf("* configuration: %s\n", parameters.algorithmConfigurationValues);
 
         System.out.println("Initializing algorithm.");
-        Subject subject = new Subject(parameters.algorithmClassName, "?");
+        Experiment experiment = null;
+        if (parameters.profileDbKey != null && parameters.profileDbLocation != null) {
+            // Create an experiment.
+            Subject subject = new Subject(parameters.algorithmClassName, "?");
+            experiment = new Experiment(
+                    parameters.profileDbKey,
+                    subject,
+                    parameters.profileDbTags.toArray(new String[0])
+            );
+        }
         OmniscientResultReceiver resultReceiver = createResultReceiver(parameters);
-        Algorithm algorithm = configureAlgorithm(parameters, resultReceiver, subject);
+        Algorithm algorithm = configureAlgorithm(parameters, resultReceiver, experiment);
 
         final long startTimeMillis = System.currentTimeMillis();
         long elapsedMillis;
@@ -135,19 +144,12 @@ public class App {
                 break;
         }
 
-        if (isExecutionSuccess && parameters.profileDbKey != null && parameters.profileDbLocation != null) {
-            // Create an experiment.
-            Experiment experiment = new Experiment(
-                    parameters.profileDbKey,
-                    subject,
-                    parameters.profileDbTags.toArray(new String[0])
-            );
-
+        if (isExecutionSuccess && experiment != null) {
             // Register additional configuration.
             for (String spec : parameters.profileDbConf) {
                 int colonIndex = spec.indexOf(':');
                 if (colonIndex != -1) {
-                    subject.addConfiguration(spec.substring(0, colonIndex), spec.substring(colonIndex + 1));
+                    experiment.getSubject().addConfiguration(spec.substring(0, colonIndex), spec.substring(colonIndex + 1));
                 }
             }
 
@@ -256,14 +258,14 @@ public class App {
      *
      * @param parameters     tell which {@link Algorithm} to instantiate and provides its properties.
      * @param resultReceiver that should be used by the {@link Algorithm} to store results
-     * @param subject        stores the configuration for a ProfileDB {@link Experiment}
+     * @param experiment     a ProfileDB {@link Experiment} or {@code null}
      * @return the configured {@link Algorithm} instance
      */
-    private static Algorithm configureAlgorithm(Parameters parameters, OmniscientResultReceiver resultReceiver, Subject subject) {
+    private static Algorithm configureAlgorithm(Parameters parameters, OmniscientResultReceiver resultReceiver, Experiment experiment) {
         try {
             final Algorithm algorithm = createAlgorithm(parameters.algorithmClassName);
-            loadMiscConfigurations(parameters, algorithm, subject);
-            setUpInputGenerators(parameters, algorithm, subject);
+            loadMiscConfigurations(parameters, algorithm, experiment);
+            setUpInputGenerators(parameters, algorithm, experiment);
             configureResultReceiver(algorithm, resultReceiver);
             return algorithm;
 
@@ -280,7 +282,7 @@ public class App {
         return (Algorithm) algorithmClass.newInstance();
     }
 
-    private static void loadMiscConfigurations(Parameters parameters, Algorithm algorithm, Subject subject) throws AlgorithmConfigurationException {
+    private static void loadMiscConfigurations(Parameters parameters, Algorithm algorithm, Experiment experiment) throws AlgorithmConfigurationException {
         for (String algorithmConfigurationValue : parameters.algorithmConfigurationValues) {
             int colonPos = algorithmConfigurationValue.indexOf(':');
             final String key = algorithmConfigurationValue.substring(0, colonPos);
@@ -289,24 +291,28 @@ public class App {
             Boolean booleanValue = tryToParseBoolean(value);
             if (algorithm instanceof BooleanParameterAlgorithm && booleanValue != null) {
                 ((BooleanParameterAlgorithm) algorithm).setBooleanConfigurationValue(key, booleanValue);
-                subject.addConfiguration(key, booleanValue);
+                if (experiment != null) experiment.getSubject().addConfiguration(key, booleanValue);
                 continue;
             }
 
             Integer intValue = tryToParseInteger(value);
             if (algorithm instanceof IntegerParameterAlgorithm && intValue != null) {
                 ((IntegerParameterAlgorithm) algorithm).setIntegerConfigurationValue(key, intValue);
-                subject.addConfiguration(key, intValue);
+                if (experiment != null) experiment.getSubject().addConfiguration(key, intValue);
                 continue;
             }
 
             if (algorithm instanceof StringParameterAlgorithm) {
                 ((StringParameterAlgorithm) algorithm).setStringConfigurationValue(key, value);
-                subject.addConfiguration(key, value);
+                if (experiment != null) experiment.getSubject().addConfiguration(key, value);
                 continue;
             }
 
             System.err.printf("Could not set up configuration value \"%s\".\n", key);
+        }
+
+        if (experiment != null && algorithm instanceof ExperimentParameterAlgorithm) {
+            ((ExperimentParameterAlgorithm) algorithm).setProfileDBExperiment(experiment);
         }
     }
 
@@ -326,7 +332,7 @@ public class App {
         }
     }
 
-    private static void setUpInputGenerators(Parameters parameters, Algorithm algorithm, Subject subject) throws AlgorithmConfigurationException {
+    private static void setUpInputGenerators(Parameters parameters, Algorithm algorithm, Experiment experiment) throws AlgorithmConfigurationException {
         if (parameters.pgpassPath != null) {
             // We assume that we are given table inputs.
             ConfigurationSettingDatabaseConnection databaseSettings = loadConfigurationSettingDatabaseConnection(
@@ -405,7 +411,9 @@ public class App {
             }
         }
 
-        subject.addConfiguration(parameters.inputDatasetKey, parameters.inputDatasets);
+        if (experiment != null) {
+            experiment.getSubject().addConfiguration(parameters.inputDatasetKey, parameters.inputDatasets);
+        }
     }
 
     /**
