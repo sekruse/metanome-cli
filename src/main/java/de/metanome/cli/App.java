@@ -9,7 +9,7 @@ import de.hpi.isg.mdms.clients.util.MetadataStoreUtil;
 import de.hpi.isg.mdms.model.MetadataStore;
 import de.hpi.isg.mdms.model.targets.Schema;
 import de.hpi.isg.mdms.model.targets.Target;
-import de.hpi.isg.mdms.tools.metanome.MetacrateResultReceiver;
+import de.hpi.isg.mdms.metanome.MetacrateResultReceiver;
 import de.hpi.isg.profiledb.ProfileDB;
 import de.hpi.isg.profiledb.store.model.Experiment;
 import de.hpi.isg.profiledb.store.model.Subject;

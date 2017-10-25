@@ -34,11 +34,6 @@
     </dependencyManagement>
 
     <dependencies>
-        <dependency>
-            <groupId>de.metanome.algorithms.dfd</groupId>
-            <artifactId>dfdMetanome</artifactId>
-            <version>1.1-SNAPSHOT</version>
-        </dependency>
 
         <dependency>
             <groupId>junit</groupId>
@@ -89,26 +84,15 @@
         </dependency>
         <dependency>
             <groupId>de.hpi.isg</groupId>
-            <artifactId>mdms-clients</artifactId>
+            <artifactId>mdms-metanome</artifactId>
             <version>0.0.3-SNAPSHOT</version>
-            <exclusions>
-                <exclusion>
-                    <groupId>de.hpi.isg</groupId>
-                    <artifactId>mdms-sqlite</artifactId>
-                </exclusion>
-            </exclusions>
         </dependency>
         <dependency>
             <groupId>de.hpi.isg</groupId>
-            <artifactId>mdms-tools</artifactId>
+            <artifactId>mdms-clients</artifactId>
             <version>0.0.3-SNAPSHOT</version>
-            <exclusions>
-                <exclusion>
-                    <groupId>de.hpi.isg</groupId>
-                    <artifactId>mdms-flink</artifactId>
-                </exclusion>
-            </exclusions>
         </dependency>
+
 
         <!-- Hadoop -->
         <dependency>
