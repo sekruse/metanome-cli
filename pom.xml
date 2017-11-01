@@ -6,7 +6,7 @@
 
     <groupId>de.metanome</groupId>
     <artifactId>metanome-cli</artifactId>
-    <version>1.1</version>
+    <version>1.1.1-SNAPSHOT</version>
 
     <profiles>
         <!-- Use this profile to build a fatjar distro. -->
