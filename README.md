@@ -9,7 +9,8 @@ Furthermore, HDFS is supported as input source.
 
 ## Installation
 
-The Metanome CLI can be built with Maven:
+Either obtain a Metanome CLI [release](https://github.com/sekruse/metanome-cli/releases) or build it yourself.
+Conceretely, the project can be built with Maven:
 ```
 .../metanome-cli$ mvn package -Pdistro
 ```
