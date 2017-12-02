@@ -21,11 +21,13 @@ import de.metanome.algorithm_integration.configuration.ConfigurationSettingDatab
 import de.metanome.algorithm_integration.configuration.ConfigurationSettingFileInput;
 import de.metanome.algorithm_integration.configuration.ConfigurationSettingTableInput;
 import de.metanome.algorithm_integration.configuration.DbSystem;
+import de.metanome.algorithm_integration.input.DatabaseConnectionGenerator;
 import de.metanome.algorithm_integration.input.FileInputGenerator;
 import de.metanome.algorithm_integration.input.RelationalInputGenerator;
 import de.metanome.algorithm_integration.input.TableInputGenerator;
 import de.metanome.algorithm_integration.result_receiver.OmniscientResultReceiver;
 import de.metanome.algorithm_integration.results.Result;
+import de.metanome.backend.input.database.DefaultDatabaseConnectionGenerator;
 import de.metanome.backend.input.database.DefaultTableInputGenerator;
 import de.metanome.backend.input.file.DefaultFileInputGenerator;
 import de.metanome.backend.result_receiver.ResultCache;
@@ -358,6 +360,15 @@ public class App {
                         inputGenerators.toArray(new TableInputGenerator[inputGenerators.size()])
                 );
 
+            } else if (algorithm instanceof DatabaseConnectionParameterAlgorithm) {
+                    List<DatabaseConnectionGenerator> inputGenerators = new LinkedList<>();
+                    for (int i = 0; i < parameters.inputDatasets.size(); i++) {
+                        inputGenerators.addAll(createDatabaseConnectionGenerators(parameters, i, databaseSettings));
+                    }
+                    ((DatabaseConnectionParameterAlgorithm) algorithm).setDatabaseConnectionGeneratorConfigurationValue(
+                        parameters.inputDatasetKey,
+                        inputGenerators.toArray(new DatabaseConnectionGenerator[inputGenerators.size()])
+                    );
             } else {
                 System.err.printf("Algorithm does not implement a supported input method (relational/tables).\n");
                 System.exit(5);
@@ -566,6 +577,56 @@ public class App {
             ConfigurationSettingDatabaseConnection configurationSettingDatabaseConnection, String table) throws AlgorithmConfigurationException {
         return new DefaultTableInputGenerator(new ConfigurationSettingTableInput(
                 table, configurationSettingDatabaseConnection
+        ));
+    }
+
+    /**
+     * Create a {@link DefaultDatabaseConnectionGenerator}s.
+     *
+     * @param parameters     defines how to configure the {@link DefaultDatabaseConnectionGenerator}
+     * @param parameterIndex index of the dataset parameter to create the {@link DefaultDatabaseConnectionGenerator}s for
+     * @return the {@link DefaultFileInputGenerator}s
+     * @throws AlgorithmConfigurationException
+     */
+    private static Collection<DefaultDatabaseConnectionGenerator> createDatabaseConnectionGenerators(
+        Parameters parameters,
+        int parameterIndex,
+        ConfigurationSettingDatabaseConnection databaseSettings) throws AlgorithmConfigurationException {
+        final String parameter = parameters.inputDatasets.get(parameterIndex);
+        if (parameter.startsWith("load:")) {
+            try {
+                return Files.lines(Paths.get(parameter.substring("load:".length())))
+                    .map(table -> {
+                        try {
+                            return createDatabaseConnectionGenerator(databaseSettings, table);
+                        } catch (AlgorithmConfigurationException e) {
+                            throw new RuntimeException("Could not create input generator.", e);
+                        }
+                    })
+                    .collect(Collectors.toList());
+            } catch (IOException e) {
+                throw new UncheckedIOException("Could not load input specification file.", e);
+            } catch (RuntimeException e) {
+                if (e.getCause() != null && (e.getCause() instanceof AlgorithmConfigurationException)) {
+                    throw (AlgorithmConfigurationException) e.getCause();
+                } else {
+                    throw e;
+                }
+            }
+        } else {
+            return Collections.singleton(
+                createDatabaseConnectionGenerator(databaseSettings, parameter)
+            );
+        }
+    }
+
+    private static DefaultDatabaseConnectionGenerator createDatabaseConnectionGenerator(
+        ConfigurationSettingDatabaseConnection configurationSettingDatabaseConnection, String table) throws AlgorithmConfigurationException {
+        return new DefaultDatabaseConnectionGenerator(new ConfigurationSettingDatabaseConnection(
+            configurationSettingDatabaseConnection.getDbUrl(),
+            configurationSettingDatabaseConnection.getUsername(),
+            configurationSettingDatabaseConnection.getPassword(),
+            configurationSettingDatabaseConnection.getSystem()
         ));
     }
 
