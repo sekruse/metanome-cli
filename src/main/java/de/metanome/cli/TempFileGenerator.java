@@ -10,6 +10,7 @@ import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 class TempFileGenerator implements FileGenerator {
@@ -60,25 +61,25 @@ class TempFileGenerator implements FileGenerator {
   }
 
   private void removeFiles() throws IOException {
-    Files.walkFileTree(directory.toPath(), new SimpleFileVisitor<Path>() {
+    Files.walkFileTree(directory.toPath(), Collections.emptySet(), 1,
+        new SimpleFileVisitor<Path>() {
+          @Override
+          public FileVisitResult visitFile(Path file, BasicFileAttributes attrs)
+              throws IOException {
 
-      @Override
-      public FileVisitResult visitFile(Path file, BasicFileAttributes attrs)
-          throws IOException {
+            if (clearTempFiles && created.contains(file.toFile())) {
+              Files.delete(file);
+              return FileVisitResult.CONTINUE;
+            }
 
-        if (clearTempFiles && created.contains(file.toFile())) {
-          Files.delete(file);
-          return FileVisitResult.CONTINUE;
-        }
+            if (clearTempFilesByPrefix && file.toFile().getName().startsWith(prefix)) {
+              Files.delete(file);
+            }
 
-        if (clearTempFilesByPrefix && file.toFile().getName().startsWith(prefix)) {
-          Files.delete(file);
-        }
+            return FileVisitResult.CONTINUE;
+          }
 
-        return FileVisitResult.CONTINUE;
-      }
-
-    });
+        });
 
     created.clear();
   }
