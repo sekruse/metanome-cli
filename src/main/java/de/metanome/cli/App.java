@@ -82,6 +82,8 @@ public class App {
         OmniscientResultReceiver resultReceiver = createResultReceiver(parameters);
         Algorithm algorithm = configureAlgorithm(parameters, resultReceiver, experiment);
 
+        TempFileGenerator tempFileGenerator = setUpTempFileGenerator(parameters, algorithm);
+
         final long startTimeMillis = System.currentTimeMillis();
         long elapsedMillis;
         boolean isExecutionSuccess = false;
@@ -100,6 +102,11 @@ public class App {
                     e.printStackTrace();
                 }
             }
+
+            if (tempFileGenerator != null) {
+                tempFileGenerator.cleanUp();
+            }
+
             long endTimeMillis = System.currentTimeMillis();
             elapsedMillis = endTimeMillis - startTimeMillis;
             System.out.printf("Elapsed time: %s (%d ms).\n", formatDuration(elapsedMillis), elapsedMillis);
@@ -598,6 +605,19 @@ public class App {
         }
     }
 
+    public static TempFileGenerator setUpTempFileGenerator(final Parameters parameters, final Algorithm algorithm) {
+        if (algorithm instanceof TempFileAlgorithm) {
+            final TempFileGenerator generator = new TempFileGenerator(algorithm.getClass().getSimpleName(),
+                parameters.tempFileDirectory,
+                parameters.clearTempFiles,
+                parameters.clearTempFilesByPrefix);
+          ((TempFileAlgorithm) algorithm).setTempFileGenerator(generator);
+          return generator;
+        }
+
+        return null;
+    }
+
     public static void configureResultReceiver(Algorithm algorithm, OmniscientResultReceiver resultReceiver) {
         boolean isAnyResultReceiverConfigured = false;
         if (algorithm instanceof FunctionalDependencyAlgorithm) {
@@ -688,6 +708,15 @@ public class App {
 
         @Parameter(names = "--null", description = "representation of NULLs")
         public String inputFileNullString = "";
+
+        @Parameter(names = "--temp", description = "directory for temporary files")
+        public String tempFileDirectory;
+
+        @Parameter(names = "--clearTempFiles", description = "clear temporary files")
+        public boolean clearTempFiles = true;
+
+        @Parameter(names = "--clearTempFilesByPrefix", description =  "if additional files in the temp directory with same prefix should be removed")
+        public boolean clearTempFilesByPrefix = false;
 
         @Parameter(names = {"-o", "--output"}, description = "how to output results (none/print/file[:run-ID]/crate:file:scope)")
         public String output = "file";
