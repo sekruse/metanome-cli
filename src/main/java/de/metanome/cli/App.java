@@ -42,7 +42,7 @@ import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.*;
-import java.util.stream.Collectors;
+import org.apache.commons.lang3.tuple.Pair;
 
 /**
  * App to run Metanome algorithms from the command line.
@@ -297,52 +297,23 @@ public class App {
     }
 
     private static void loadMiscConfigurations(Parameters parameters, Algorithm algorithm, Experiment experiment) throws AlgorithmConfigurationException {
+        final List<Pair<String, String>> values = new ArrayList<>();
         for (String algorithmConfigurationValue : parameters.algorithmConfigurationValues) {
             int colonPos = algorithmConfigurationValue.indexOf(':');
             final String key = algorithmConfigurationValue.substring(0, colonPos);
             final String value = algorithmConfigurationValue.substring(colonPos + 1);
-
-            Boolean booleanValue = tryToParseBoolean(value);
-            if (algorithm instanceof BooleanParameterAlgorithm && booleanValue != null) {
-                ((BooleanParameterAlgorithm) algorithm).setBooleanConfigurationValue(key, booleanValue);
-                if (experiment != null) experiment.getSubject().addConfiguration(key, booleanValue);
-                continue;
-            }
-
-            Integer intValue = tryToParseInteger(value);
-            if (algorithm instanceof IntegerParameterAlgorithm && intValue != null) {
-                ((IntegerParameterAlgorithm) algorithm).setIntegerConfigurationValue(key, intValue);
-                if (experiment != null) experiment.getSubject().addConfiguration(key, intValue);
-                continue;
-            }
-
-            if (algorithm instanceof StringParameterAlgorithm) {
-                ((StringParameterAlgorithm) algorithm).setStringConfigurationValue(key, value);
-                if (experiment != null) experiment.getSubject().addConfiguration(key, value);
-                continue;
-            }
-
-            System.err.printf("Could not set up configuration value \"%s\".\n", key);
+            values.add(Pair.of(key, value));
         }
 
-        if (experiment != null && algorithm instanceof ExperimentParameterAlgorithm) {
-            ((ExperimentParameterAlgorithm) algorithm).setProfileDBExperiment(experiment);
-        }
-    }
-
-    private static Boolean tryToParseBoolean(String str) {
-        if (str.equalsIgnoreCase("true") || str.equalsIgnoreCase("false")) {
-            return Boolean.parseBoolean(str);
+        if (experiment == null) {
+            AlgorithmInitializer.forAlgorithm(algorithm, values).apply();
         } else {
-            return null;
-        }
-    }
+            AlgorithmInitializer
+                .forAlgorithm(algorithm, values, experiment.getSubject()::addConfiguration).apply();
 
-    private static Integer tryToParseInteger(String str) {
-        try {
-            return Integer.valueOf(str);
-        } catch (NumberFormatException e) {
-            return null;
+            if (algorithm instanceof ExperimentParameterAlgorithm) {
+                ((ExperimentParameterAlgorithm) algorithm).setProfileDBExperiment(experiment);
+            }
         }
     }
 
