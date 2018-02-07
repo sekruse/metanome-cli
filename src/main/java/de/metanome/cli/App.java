@@ -1,8 +1,11 @@
 package de.metanome.cli;
 
+import static java.util.stream.Collectors.toList;
+
 import com.beust.jcommander.JCommander;
 import com.beust.jcommander.Parameter;
 import com.beust.jcommander.ParameterException;
+import com.google.common.base.Preconditions;
 import de.hpi.isg.mdms.clients.MetacrateClient;
 import de.hpi.isg.mdms.clients.parameters.MetadataStoreParameters;
 import de.hpi.isg.mdms.clients.util.MetadataStoreUtil;
@@ -17,6 +20,8 @@ import de.hpi.isg.profiledb.store.model.TimeMeasurement;
 import de.metanome.algorithm_integration.Algorithm;
 import de.metanome.algorithm_integration.AlgorithmConfigurationException;
 import de.metanome.algorithm_integration.algorithm_types.*;
+import de.metanome.algorithm_integration.configuration.ConfigurationRequirement;
+import de.metanome.algorithm_integration.configuration.ConfigurationRequirementDatabaseConnection;
 import de.metanome.algorithm_integration.configuration.ConfigurationSettingDatabaseConnection;
 import de.metanome.algorithm_integration.configuration.ConfigurationSettingFileInput;
 import de.metanome.algorithm_integration.configuration.ConfigurationSettingTableInput;
@@ -367,19 +372,34 @@ public class App {
                         inputGenerators.toArray(new TableInputGenerator[inputGenerators.size()])
                 );
 
-            } else if (algorithm instanceof DatabaseConnectionParameterAlgorithm) {
-                    List<DatabaseConnectionGenerator> inputGenerators = new LinkedList<>();
-                    for (int i = 0; i < parameters.inputDatasets.size(); i++) {
-                        inputGenerators.addAll(createDatabaseConnectionGenerators(parameters, i, databaseSettings));
-                    }
-                    ((DatabaseConnectionParameterAlgorithm) algorithm).setDatabaseConnectionGeneratorConfigurationValue(
-                        parameters.inputDatasetKey,
-                        inputGenerators.toArray(new DatabaseConnectionGenerator[inputGenerators.size()])
-                    );
             } else {
                 System.err.printf("Algorithm does not implement a supported input method (relational/tables).\n");
                 System.exit(5);
                 return;
+            }
+
+
+            if (algorithm instanceof DatabaseConnectionParameterAlgorithm) {
+                final List<ConfigurationRequirement<?>> db = algorithm.getConfigurationRequirements().stream()
+                    .filter(cr -> cr.getClass() == ConfigurationRequirementDatabaseConnection.class)
+                    .collect(toList());
+
+                if (db.isEmpty()) {
+                    System.err.println("DatabaseConnection not specified");
+                } else {
+                    Preconditions.checkState(db.size() == 1, "More than one DB conf requirement");
+
+                    List<DatabaseConnectionGenerator> inputGenerators = new LinkedList<>();
+                    for (int i = 0; i < parameters.inputDatasets.size(); i++) {
+                        inputGenerators.addAll(
+                            createDatabaseConnectionGenerators(parameters, i, databaseSettings));
+                    }
+                    ((DatabaseConnectionParameterAlgorithm) algorithm)
+                        .setDatabaseConnectionGeneratorConfigurationValue(db.get(0).getIdentifier(),
+                            inputGenerators
+                                .toArray(new DatabaseConnectionGenerator[inputGenerators.size()])
+                        );
+                }
             }
 
         } else {
@@ -434,6 +454,7 @@ public class App {
         }
     }
 
+
     /**
      * Create a {@link DefaultFileInputGenerator}s.
      *
@@ -458,7 +479,7 @@ public class App {
                             }
                         })
                         .filter(Objects::nonNull)
-                        .collect(Collectors.toList());
+                        .collect(toList());
             } catch (IOException e) {
                 throw new UncheckedIOException("Could not load input specification file.", e);
             } catch (RuntimeException e) {
@@ -563,7 +584,7 @@ public class App {
                                 throw new RuntimeException("Could not create input generator.", e);
                             }
                         })
-                        .collect(Collectors.toList());
+                        .collect(toList());
             } catch (IOException e) {
                 throw new UncheckedIOException("Could not load input specification file.", e);
             } catch (RuntimeException e) {
@@ -610,7 +631,7 @@ public class App {
                             throw new RuntimeException("Could not create input generator.", e);
                         }
                     })
-                    .collect(Collectors.toList());
+                    .collect(toList());
             } catch (IOException e) {
                 throw new UncheckedIOException("Could not load input specification file.", e);
             } catch (RuntimeException e) {
