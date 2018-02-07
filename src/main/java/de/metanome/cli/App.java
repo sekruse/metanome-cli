@@ -54,6 +54,8 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.text.DateFormat;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.Collection;
@@ -63,16 +65,24 @@ import java.util.GregorianCalendar;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Objects;
+import lombok.ToString;
 import org.apache.commons.lang3.tuple.Pair;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * App to run Metanome algorithms from the command line.
  */
 public class App {
 
+  private static final Logger LOG = LoggerFactory.getLogger(App.class);
+
+  private static final DateFormat DATE_FORMAT = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+
 
   public static void main(String[] args) {
     final Parameters parameters = parseParameters(args);
+    LOG.trace(parameters.toString());
     run(parameters);
   }
 
@@ -82,22 +92,22 @@ public class App {
     try {
       jCommander.parse(args);
     } catch (ParameterException e) {
-      System.err.println("Could not parse command line args: " + e.getMessage());
+      LOG.error("Could not parse command line args: {}", e.getMessage());
       StringBuilder sb = new StringBuilder();
       jCommander.usage(sb);
-      System.err.println(sb.toString());
+      LOG.info(sb.toString());
       System.exit(1);
     }
     return parameters;
   }
 
   private static void run(Parameters parameters) {
-    System.out.printf("Running %s\n", parameters.algorithmClassName);
-    System.out.printf("* in:            %s\n", parameters.inputDatasets);
-    System.out.printf("* out:           %s\n", parameters.output);
-    System.out.printf("* configuration: %s\n", parameters.algorithmConfigurationValues);
+    LOG.info("Running {}", parameters.algorithmClassName);
+    LOG.info("* in:            {}", parameters.inputDatasets);
+    LOG.info("* out:           {}", parameters.output);
+    LOG.info("* configuration: {}", parameters.algorithmConfigurationValues);
 
-    System.out.println("Initializing algorithm.");
+    LOG.info("Initializing algorithm.");
     Experiment experiment = null;
     if (parameters.profileDbKey != null && parameters.profileDbLocation != null) {
       // Create an experiment.
@@ -114,21 +124,20 @@ public class App {
     TempFileGenerator tempFileGenerator = setUpTempFileGenerator(parameters, algorithm);
 
     final long startTimeMillis = System.currentTimeMillis();
+    LOG.debug("Execution started at {}", DATE_FORMAT.format(new Date(startTimeMillis)));
     long elapsedMillis;
     boolean isExecutionSuccess = false;
     try {
       algorithm.execute();
       isExecutionSuccess = true;
     } catch (Exception e) {
-      System.err.printf("Algorithm crashed.\n");
-      e.printStackTrace();
+      LOG.error("Algorithm crashed.", e);
     } finally {
       if (resultReceiver instanceof MetacrateResultReceiver) {
         try {
           ((MetacrateResultReceiver) resultReceiver).getMetadataStore().flush();
         } catch (Exception e) {
-          System.err.println("Could not flush Metacrate.");
-          e.printStackTrace();
+          LOG.error("Could not flush Metacrate.", e);
         }
       }
 
@@ -138,8 +147,8 @@ public class App {
 
       long endTimeMillis = System.currentTimeMillis();
       elapsedMillis = endTimeMillis - startTimeMillis;
-      System.out
-          .printf("Elapsed time: %s (%d ms).\n", formatDuration(elapsedMillis), elapsedMillis);
+      LOG.debug("Execution completed at {}", DATE_FORMAT.format(new Date(endTimeMillis)));
+      LOG.info("Elapsed time: {} ({} ms).", formatDuration(elapsedMillis), elapsedMillis);
     }
 
     // Handle "file:exec-id" formats properly.
@@ -147,14 +156,13 @@ public class App {
     switch (parameters.output.split(":")[0]) {
       case "print":
         resultCache = (ResultCache) resultReceiver;
-        System.out.println("Results:");
+        LOG.info("Results:");
         for (Result result : resultCache.fetchNewResults()) {
-          System.out.println(result);
+          LOG.info(result.toString());
         }
         break;
       default:
-        System.out
-            .printf("Unknown output mode \"%s\". Defaulting to \"file\"\n", parameters.output);
+        LOG.warn("Unknown output mode \"{}\". Defaulting to \"file\"", parameters.output);
       case "crate":
         if (resultReceiver instanceof MetacrateResultReceiver) {
           try {
@@ -162,8 +170,7 @@ public class App {
             metacrateResultReceiver.close();
             break;
           } catch (Exception e) {
-            System.err.println("Storing the result failed.");
-            e.printStackTrace();
+            LOG.error("Storing the result failed.", e);
             System.exit(4);
           }
         }
@@ -175,8 +182,7 @@ public class App {
             ((Closeable) resultReceiver).close();
           }
         } catch (IOException e) {
-          System.err.println("Storing the result failed.");
-          e.printStackTrace();
+          LOG.error("Storing the result failed.", e);
           System.exit(4);
         }
         break;
@@ -201,8 +207,7 @@ public class App {
       try {
         new ProfileDB().append(new File(parameters.profileDbLocation), experiment);
       } catch (IOException e) {
-        System.err.printf("Could not store ProfileDB experiment: %s\n", e.getMessage());
-        e.printStackTrace();
+        LOG.error("Could not store ProfileDB experiment: {}", e);
       }
     }
 
@@ -313,8 +318,7 @@ public class App {
       return algorithm;
 
     } catch (Exception e) {
-      System.err.println("Could not initialize algorithm.");
-      e.printStackTrace();
+      LOG.error("Could not initialize algorithm.", e);
       System.exit(3);
       return null;
     }
@@ -376,8 +380,7 @@ public class App {
             inputGenerators.toArray(new TableInputGenerator[inputGenerators.size()])
         );
       } else {
-        System.err
-            .printf("Algorithm does not implement a supported input method (relational/tables).\n");
+        LOG.error("Algorithm does not implement a supported input method (relational/tables).");
         System.exit(5);
         return;
       }
@@ -389,7 +392,7 @@ public class App {
             .collect(toList());
 
         if (db.isEmpty()) {
-          System.err.println("DatabaseConnection not specified");
+          LOG.debug("DatabaseConnection not specified");
         } else {
           Preconditions.checkState(db.size() == 1, "More than one DB conf requirement");
 
@@ -449,8 +452,7 @@ public class App {
         }
 
         if (!isAnyInput) {
-          System.err.printf(
-              "Algorithm does not implement a supported input method (relational/files).\n");
+          LOG.error("Algorithm does not implement a supported input method (relational/files).");
           System.exit(5);
           return;
         }
@@ -756,13 +758,14 @@ public class App {
     }
 
     if (!isAnyResultReceiverConfigured) {
-      System.err.println("Could not configure any result receiver.");
+      LOG.error("Could not configure any result receiver.");
     }
   }
 
   /**
    * Parameters for the Metanome CLI {@link App}.
    */
+  @ToString
   public static class Parameters {
 
     @Parameter(names = {
@@ -838,6 +841,5 @@ public class App {
 
     @Parameter(names = "--profiledb", description = "location of a ProfileDB to store a ProfileDB experiment at")
     public String profileDbLocation;
-
   }
 }

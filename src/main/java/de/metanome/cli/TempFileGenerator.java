@@ -12,8 +12,12 @@ import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 class TempFileGenerator implements FileGenerator {
+
+  private static final Logger LOG = LoggerFactory.getLogger(TempFileGenerator.class);
 
   private final String prefix;
   private final String suffix;
@@ -55,7 +59,7 @@ class TempFileGenerator implements FileGenerator {
       try {
         removeFiles();
       } catch (final IOException e) {
-        e.printStackTrace();
+        LOG.error("cannot remove temp files", e);
       }
     }
   }
