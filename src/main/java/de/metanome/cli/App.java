@@ -395,17 +395,11 @@ public class App {
           LOG.debug("DatabaseConnection not specified");
         } else {
           Preconditions.checkState(db.size() == 1, "More than one DB conf requirement");
-
-          List<DatabaseConnectionGenerator> inputGenerators = new LinkedList<>();
-          for (int i = 0; i < parameters.inputDatasets.size(); i++) {
-            inputGenerators.addAll(
-                createDatabaseConnectionGenerators(parameters, i, databaseSettings));
-          }
+          final DatabaseConnectionGenerator generator = createDatabaseConnectionGenerator(
+              databaseSettings);
           ((DatabaseConnectionParameterAlgorithm) algorithm)
               .setDatabaseConnectionGeneratorConfigurationValue(db.get(0).getIdentifier(),
-                  inputGenerators
-                      .toArray(new DatabaseConnectionGenerator[inputGenerators.size()])
-              );
+                  new DatabaseConnectionGenerator[]{generator});
         }
       }
 
@@ -620,48 +614,8 @@ public class App {
     ));
   }
 
-  /**
-   * Create a {@link DefaultDatabaseConnectionGenerator}s.
-   *
-   * @param parameters defines how to configure the {@link DefaultDatabaseConnectionGenerator}
-   * @param parameterIndex index of the dataset parameter to create the {@link DefaultDatabaseConnectionGenerator}s for
-   * @return the {@link DefaultFileInputGenerator}s
-   */
-  private static Collection<DefaultDatabaseConnectionGenerator> createDatabaseConnectionGenerators(
-      Parameters parameters,
-      int parameterIndex,
-      ConfigurationSettingDatabaseConnection databaseSettings)
-      throws AlgorithmConfigurationException {
-    final String parameter = parameters.inputDatasets.get(parameterIndex);
-    if (parameter.startsWith("load:")) {
-      try {
-        return Files.lines(Paths.get(parameter.substring("load:".length())))
-            .map(table -> {
-              try {
-                return createDatabaseConnectionGenerator(databaseSettings, table);
-              } catch (AlgorithmConfigurationException e) {
-                throw new RuntimeException("Could not create input generator.", e);
-              }
-            })
-            .collect(toList());
-      } catch (IOException e) {
-        throw new UncheckedIOException("Could not load input specification file.", e);
-      } catch (RuntimeException e) {
-        if (e.getCause() != null && (e.getCause() instanceof AlgorithmConfigurationException)) {
-          throw (AlgorithmConfigurationException) e.getCause();
-        } else {
-          throw e;
-        }
-      }
-    } else {
-      return Collections.singleton(
-          createDatabaseConnectionGenerator(databaseSettings, parameter)
-      );
-    }
-  }
-
   private static DefaultDatabaseConnectionGenerator createDatabaseConnectionGenerator(
-      ConfigurationSettingDatabaseConnection configurationSettingDatabaseConnection, String table)
+      ConfigurationSettingDatabaseConnection configurationSettingDatabaseConnection)
       throws AlgorithmConfigurationException {
     return new DefaultDatabaseConnectionGenerator(new ConfigurationSettingDatabaseConnection(
         configurationSettingDatabaseConnection.getDbUrl(),
