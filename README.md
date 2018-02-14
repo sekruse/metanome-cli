@@ -31,66 +31,15 @@ Then you can execute it via
 ```
 $ java -cp metanome-cli.jar:my-algorithm.jar de.metanome.cli.App --algorithm com.example.MyAlgorithm <parameters...>
 ```
-To learn about the various parameters of the Metanome CLI, you can also execute it without any parameters (including `--algorithm`) and get an output like the following:
-```
-Usage: <main class> [options]
-  Options:
-  * -a, --algorithm
-       name of the Metanome algorithm class
-    --algorithm-config
-       algorithm configuration parameters (<name>:<value>)
-       Default: []
-    --db-connection
-       a PGPASS file that specifies the database connection; if given, the
-       inputs are treated as database tables
-    --db-type
-       the type of database as it would appear in a JDBC URL
-    --escape
-       escapes special characters
-       Default:
-    --header
-       first row is a header
-       Default: false
-    --ignore-leading-spaces
-       ignore leading white spaces in each field
-       Default: false
-  * --file-key, --input-key, --table-key
-       configuration key for the input files/tables
-  * --files, --inputs, --tables
-       input file/tables to be analyzed and/or files list input files/tables
-       (prefixed with 'load:')
-       Default: []
-    --null
-       representation of NULLs
-       Default: <empty string>
-    -o, --output
-       how to output results (none/print/file[:run-ID]/crate:file:scope)
-       Default: file
-    --profiledb
-       location of a ProfileDB to store a ProfileDB experiment at
-    --profiledb-conf
-       additional configuration to store with a ProfileDB experiment
-       Default: []
-    --profiledb-key
-       experiment key to store a ProfileDB experiment
-    --profiledb-tags
-       tags to store with a ProfileDB experiment
-       Default: []
-    --quote
-       delimits fields in the input file
-       Default: "
-    --separator
-       separates fields in the input file
-       Default: ;
-    --skip
-       numbers of lines to skip
-       Default: 0
-    --skip-differing-lines
-       skip lines with incorrect number of fields
-       Default: false
-    --strict-quotes
-       enforce strict quotes
-       Default: false
-```
+In order to get an overview of the various parameters of the Metanome CLI, you may also execute it without any parameters (including `--algorithm`).
+
+The amount and severity of logging output can be controlled via the system properties of [Tinylog](http://www.tinylog.org/configuration).
+Most importantly if the algorithm does not behave as expected or you are trying to debug, enable all log messages by appending `-Dtinylog.level=trace` to the `java` invocation.
+If log output is not releveant at all, turn Metanome CLI into quiet mode with `-Dtinylog.level=off`.
+
+
+## Contributing
 
 In case of problems, feel free to file an issue.
+Preferably stick to the [Google Java Style Guide](https://google.github.io/styleguide/javaguide.html).
+Formatter instructions for Eclipse and Intellij are available on [Github](https://github.com/google/styleguide).
