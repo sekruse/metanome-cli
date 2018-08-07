@@ -57,6 +57,16 @@ public class DiscardingResultReceiver extends ResultReceiver {
     }
 
     @Override
+    public void receiveResult(MatchingDependency matchingDependency) throws CouldNotReceiveResultException, ColumnNameMismatchException {
+
+    }
+
+    @Override
+    public void receiveResult(ConditionalFunctionalDependency conditionalFunctionalDependency) throws CouldNotReceiveResultException, ColumnNameMismatchException {
+
+    }
+
+    @Override
     public void close() {
 
     }
