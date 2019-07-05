@@ -30,6 +30,7 @@ import de.metanome.algorithm_integration.algorithm_types.RelationalInputParamete
 import de.metanome.algorithm_integration.algorithm_types.TableInputParameterAlgorithm;
 import de.metanome.algorithm_integration.algorithm_types.TempFileAlgorithm;
 import de.metanome.algorithm_integration.algorithm_types.UniqueColumnCombinationsAlgorithm;
+import de.metanome.algorithm_integration.algorithm_types.DenialConstraintAlgorithm;
 import de.metanome.algorithm_integration.configuration.ConfigurationRequirement;
 import de.metanome.algorithm_integration.configuration.ConfigurationRequirementDatabaseConnection;
 import de.metanome.algorithm_integration.configuration.ConfigurationSettingDatabaseConnection;
@@ -704,6 +705,11 @@ public class App {
     if (algorithm instanceof MultivaluedDependencyAlgorithm) {
       ((MultivaluedDependencyAlgorithm) algorithm).setResultReceiver(resultReceiver);
       isAnyResultReceiverConfigured = true;
+    }
+    
+    if (algorithm instanceof DenialConstraintAlgorithm) {
+    	((DenialConstraintAlgorithm) algorithm).setResultReceiver(resultReceiver);
+    	isAnyResultReceiverConfigured = true;
     }
 
     if (algorithm instanceof MetacrateClient && resultReceiver instanceof MetacrateResultReceiver) {
